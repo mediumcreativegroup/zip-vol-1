@@ -69,8 +69,7 @@
   }
   #fullscreen-btn {
     background: none; border: none; cursor: pointer;
-    font-size: 9px; letter-spacing: 0.15em;
-    text-transform: uppercase; color: #000; opacity: 0.25;
+    font-size: 12px; color: #000; opacity: 0.25;
     padding: 0; line-height: 1;
     transition: opacity 0.15s;
   }
@@ -78,21 +77,13 @@
   #stage-wrap {
     position: relative;
     flex-shrink: 0;
-    touch-action: none;
+    cursor: pointer;
   }
-  #flipCanvas {
-    display: block;
-    cursor: grab;
-    box-shadow:
-      0 2px 4px rgba(0,0,0,0.06),
-      0 8px 24px rgba(0,0,0,0.1),
-      0 24px 60px rgba(0,0,0,0.12);
-  }
-  #flipCanvas.dragging { cursor: grabbing; }
+  #flipCanvas { display: block; box-shadow: 0 2px 4px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.1), 0 24px 60px rgba(0,0,0,0.12); }
+  /* Left/right tap zones */
   #zone-left, #zone-right {
     position: absolute;
-    top: 0; width: 18%; height: 100%;
-    cursor: pointer;
+    top: 0; width: 50%; height: 100%;
   }
   #zone-left  { left: 0; }
   #zone-right { right: 0; }
@@ -129,13 +120,6 @@
   }
   .thumb canvas { width: 100%; height: 100%; display: block; }
   .thumb.active { border-bottom-color: #000; }
-
-  /* Fullscreen overrides */
-  :fullscreen #root,
-  :-webkit-full-screen #root {
-    background: #fff;
-    justify-content: center;
-  }
 </style>
 </head>
 <body>
@@ -194,23 +178,8 @@ let totalPages = 0;
 let maxSpreads = 0;
 let spread     = 0;
 let W = 0, H = 0, PW = 0;
-const DPR = Math.min(window.devicePixelRatio || 1, 2);
-
-// Detect mobile strictly — must be narrow AND touch device
+const DPR      = Math.min(window.devicePixelRatio || 1, 2);
 const IS_MOBILE = window.innerWidth < 700 && ('ontouchstart' in window);
-
-const DRAG_NONE  = 0;
-const DRAG_RIGHT = 1;
-const DRAG_LEFT  = 2;
-let dragState    = DRAG_NONE;
-let dragX        = 0;
-let flipProgress = 0;
-let animating    = false;
-let animTarget   = 0;
-let animFrom     = 0;
-let animStart    = 0;
-let pendingDir   = null;
-const ANIM_DURATION = 300;
 
 async function fetchWithFallback(url) {
   try {
@@ -235,27 +204,22 @@ async function init() {
     const pdfPageH = rawVp.height;
 
     let displayScale;
-
     if (IS_MOBILE) {
-      const mobileW = window.innerWidth * 0.92;
-      displayScale  = mobileW / pdfPageW;
+      displayScale = (window.innerWidth * 0.92) / pdfPageW;
       W  = Math.round(pdfPageW * displayScale);
       H  = Math.round(pdfPageH * displayScale);
       PW = W;
     } else {
-      const maxBookW   = Math.min(760, window.innerWidth * 0.92);
-      const maxBookH   = Math.min(480, window.innerHeight * 0.65);
-      const scaleForW  = (maxBookW / 2) / pdfPageW;
-      const scaleForH  = maxBookH / pdfPageH;
-      displayScale     = Math.min(scaleForW, scaleForH);
-      const cssPageW   = Math.round(pdfPageW * displayScale);
-      const cssPageH   = Math.round(pdfPageH * displayScale);
+      const maxBookW  = Math.min(760, window.innerWidth * 0.92);
+      const maxBookH  = Math.min(480, window.innerHeight * 0.65);
+      displayScale    = Math.min((maxBookW / 2) / pdfPageW, maxBookH / pdfPageH);
+      const cssPageW  = Math.round(pdfPageW * displayScale);
+      const cssPageH  = Math.round(pdfPageH * displayScale);
       W  = cssPageW * 2;
       H  = cssPageH;
       PW = cssPageW;
     }
 
-    // Mobile uses 3x render to avoid memory crash; desktop uses 6x for sharpness
     const renderScale = displayScale * (IS_MOBILE ? 3 : 6);
 
     for (let i = 1; i <= totalPages; i++) {
@@ -264,8 +228,7 @@ async function init() {
       const pg = await pdf.getPage(i);
       const vp = pg.getViewport({ scale: renderScale });
       const c  = document.createElement('canvas');
-      c.width  = vp.width;
-      c.height = vp.height;
+      c.width  = vp.width; c.height = vp.height;
       await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
       pageImgs[i] = c;
     }
@@ -294,11 +257,6 @@ function setupBook() {
     ? totalPages - 1
     : Math.ceil((totalPages - 2) / 2) + 1;
 
-  if (IS_MOBILE) {
-    zoneLeft.style.display  = 'none';
-    zoneRight.style.display = 'none';
-  }
-
   buildThumbs();
   loadingScreen.style.display = 'none';
   bookWrap.classList.add('visible');
@@ -310,8 +268,8 @@ function setupBook() {
 
 function spreadPages(s) {
   if (IS_MOBILE) return { left: null, right: s + 1 };
-  if (s === 0)          return { left: null,      right: 1 };
-  if (s === maxSpreads) return { left: totalPages, right: null };
+  if (s === 0)          return { left: null,       right: 1 };
+  if (s === maxSpreads) return { left: totalPages,  right: null };
   const base = (s - 1) * 2 + 2;
   return { left: base, right: base + 1 <= totalPages - 1 ? base + 1 : null };
 }
@@ -322,66 +280,22 @@ function getImg(n) {
 
 function draw() {
   ctx.clearRect(0, 0, W, H);
-
   if (IS_MOBILE) {
-    const pageNum = spread + 1;
-    drawPage(ctx, pageNum, 0, 0, W, H);
-    if (dragState === DRAG_NONE && !animating) return;
-    const t = animating ? flipProgress
-      : (dragState === DRAG_RIGHT ? 1 - dragX / W : dragX / W);
-    const ct = Math.max(0, Math.min(1, t));
-    const img = getImg(pageNum);
-    if (!img) return;
-    if (dragState === DRAG_RIGHT || pendingDir === 'right') {
-      const nextImg = getImg(pageNum + 1);
-      if (nextImg) ctx.drawImage(nextImg, 0, 0, W, H);
-      ctx.save();
-      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-      ctx.drawImage(img, -W * ct, 0, W, H);
-      ctx.restore();
-    } else {
-      const prevImg = getImg(pageNum - 1);
-      if (prevImg) ctx.drawImage(prevImg, 0, 0, W, H);
-      ctx.save();
-      ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-      ctx.drawImage(img, W * ct, 0, W, H);
-      ctx.restore();
-    }
-    return;
-  }
-
-  // Desktop
-  const cur  = spreadPages(spread);
-  const next = spreadPages(Math.min(spread + 1, maxSpreads));
-  const prev = spreadPages(Math.max(spread - 1, 0));
-
-  drawPage(ctx, cur.left,  0,  0, PW, H);
-  drawPage(ctx, cur.right, PW, 0, PW, H);
-
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(PW, 0); ctx.lineTo(PW, H);
-  ctx.stroke();
-  ctx.restore();
-
-  if (dragState === DRAG_NONE && !animating) return;
-  const t  = animating ? flipProgress
-    : (dragState === DRAG_RIGHT ? 1 - dragX / PW : dragX / PW);
-  const ct = Math.max(0, Math.min(1, t));
-
-  if (dragState === DRAG_RIGHT || pendingDir === 'right') {
-    drawPage(ctx, next.left,  0,  0, PW, H);
-    drawPage(ctx, next.right, PW, 0, PW, H);
-    drawPagePeel(ctx, cur.right, PW, H, ct, 'right');
+    drawPage(spread + 1, 0, 0, W, H);
   } else {
-    drawPage(ctx, prev.left,  0,  0, PW, H);
-    drawPage(ctx, prev.right, PW, 0, PW, H);
-    drawPagePeel(ctx, cur.left, PW, H, ct, 'left');
+    const cur = spreadPages(spread);
+    drawPage(cur.left,  0,  0, PW, H);
+    drawPage(cur.right, PW, 0, PW, H);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PW, 0); ctx.lineTo(PW, H);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
-function drawPage(ctx, n, x, y, w, h) {
+function drawPage(n, x, y, w, h) {
   const img = getImg(n);
   ctx.save();
   ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
@@ -390,184 +304,39 @@ function drawPage(ctx, n, x, y, w, h) {
   ctx.restore();
 }
 
-function drawPagePeel(ctx, turningPage, pw, h, t, side) {
-  const foldX = side === 'right' ? pw + pw * (1 - t) : pw - pw * (1 - t);
-  const img   = getImg(turningPage);
-
-  ctx.save();
-  ctx.beginPath();
-  if (side === 'right') ctx.rect(pw, 0, Math.max(0, foldX - pw), h);
-  else ctx.rect(Math.min(pw, foldX), 0, Math.max(0, pw - foldX), h);
-  ctx.clip();
-  if (img) ctx.drawImage(img, side === 'right' ? pw : 0, 0, pw, h);
-  else { ctx.fillStyle = '#f8f8f8'; ctx.fillRect(side === 'right' ? pw : 0, 0, pw, h); }
-  ctx.restore();
-
-  const fw = side === 'right' ? (foldX - pw) * 2 : (pw - foldX) * 2;
-  if (fw > 0) {
-    ctx.save();
-    if (side === 'right') {
-      ctx.beginPath(); ctx.rect(Math.max(pw, foldX - fw), 0, fw, h); ctx.clip();
-      ctx.translate(foldX * 2 - pw, 0); ctx.scale(-1, 1);
-      if (img) ctx.drawImage(img, pw, 0, pw, h);
-    } else {
-      ctx.beginPath(); ctx.rect(pw, 0, fw, h); ctx.clip();
-      ctx.translate(foldX * 2 + pw, 0); ctx.scale(-1, 1);
-      if (img) ctx.drawImage(img, 0, 0, pw, h);
-    }
-    ctx.restore();
-    ctx.save();
-    const sw = Math.min(fw * 0.4, 40);
-    const g  = ctx.createLinearGradient(foldX - sw, 0, foldX + sw, 0);
-    g.addColorStop(0,   'rgba(0,0,0,0)');
-    g.addColorStop(0.4, 'rgba(0,0,0,0.08)');
-    g.addColorStop(0.5, 'rgba(0,0,0,0.18)');
-    g.addColorStop(0.6, 'rgba(0,0,0,0.08)');
-    g.addColorStop(1,   'rgba(0,0,0,0)');
-    ctx.fillStyle = g; ctx.fillRect(foldX - sw, 0, sw * 2, h);
-    ctx.restore();
-  }
-  ctx.save();
-  const aw = pw * 0.15;
-  let ag;
-  if (side === 'right') {
-    ag = ctx.createLinearGradient(pw, 0, pw + aw, 0);
-    ag.addColorStop(0, 'rgba(0,0,0,0.09)'); ag.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = ag; ctx.fillRect(pw, 0, Math.min(aw, foldX - pw), h);
-  } else {
-    ag = ctx.createLinearGradient(pw, 0, pw - aw, 0);
-    ag.addColorStop(0, 'rgba(0,0,0,0.09)'); ag.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = ag; ctx.fillRect(Math.max(foldX, pw - aw), 0, Math.min(aw, pw - foldX), h);
-  }
-  ctx.restore();
-}
-
-function animFrame(now) {
-  const raw  = (now - animStart) / ANIM_DURATION;
-  const ease = raw < 1 ? 1 - Math.pow(1 - raw, 3) : 1;
-  flipProgress = animFrom + (animTarget - animFrom) * ease;
-  draw();
-  if (raw < 1) {
-    requestAnimationFrame(animFrame);
-  } else {
-    flipProgress = animTarget;
-    if (animTarget === 1) {
-      if (pendingDir === 'right') spread++;
-      else spread--;
-    }
-    animating = false; dragState = DRAG_NONE;
-    pendingDir = null; flipProgress = 0;
-    draw(); updateUI();
-  }
-}
-
-function finishDrag() {
-  const edgeW = IS_MOBILE ? W : PW;
-  const t = dragState === DRAG_RIGHT ? 1 - dragX / edgeW : dragX / edgeW;
-  flipProgress = t; animFrom = t;
-  if (t > 0.25) {
-    pendingDir = dragState === DRAG_RIGHT ? 'right' : 'left';
-    animTarget = 1;
-  } else { pendingDir = null; animTarget = 0; }
-  animStart = performance.now() - (t * ANIM_DURATION);
-  animating = true;
-  requestAnimationFrame(animFrame);
-}
-
-function quickFlip(dir) {
-  if (animating) return;
-  if (dir === 'right' && spread >= maxSpreads) return;
-  if (dir === 'left'  && spread <= 0)          return;
-  if (dir === 'right') spread++;
-  else spread--;
+function goTo(s) {
+  spread = Math.max(0, Math.min(maxSpreads, s));
   draw();
   updateUI();
 }
 
-function getEventPos(e) {
-  const rect = flipCanvas.getBoundingClientRect();
-  const scaleX = W / rect.width;
-  if (e.touches) return { x: (e.touches[0].clientX - rect.left) * scaleX };
-  return { x: (e.clientX - rect.left) * scaleX };
-}
-
-function onDragStart(e) {
-  if (animating) return;
-  e.preventDefault();
-  const pos = getEventPos(e);
-  if (IS_MOBILE) {
-    dragState = DRAG_RIGHT; dragX = W - pos.x;
-    flipCanvas.classList.add('dragging');
-  } else {
-    if (pos.x > PW * 0.65 && spread < maxSpreads) {
-      dragState = DRAG_RIGHT; dragX = W - pos.x;
-      flipCanvas.classList.add('dragging');
-    } else if (pos.x < PW * 0.35 && spread > 0) {
-      dragState = DRAG_LEFT; dragX = pos.x;
-      flipCanvas.classList.add('dragging');
-    }
-  }
-}
-
-let touchStartX = 0, touchStartY = 0, touchDir = null;
-
-function onTouchStart(e) {
-  touchStartX = e.touches[0].clientX;
-  touchStartY = e.touches[0].clientY;
-  touchDir = null;
-  onDragStart(e);
-}
-
-function onTouchMove(e) {
-  if (!touchDir) {
-    const dx = Math.abs(e.touches[0].clientX - touchStartX);
-    const dy = Math.abs(e.touches[0].clientY - touchStartY);
-    touchDir = dx > dy ? 'h' : 'v';
-  }
-  // On mobile just block scroll during horizontal swipe, no live drag drawing
-  if (IS_MOBILE && touchDir === 'h') { e.preventDefault(); return; }
-  if (!IS_MOBILE && touchDir === 'h') { e.preventDefault(); onDragMove(e); }
-}
-
-function onDragMove(e) {
-  if (dragState === DRAG_NONE || animating) return;
-  e.preventDefault();
-  const pos   = getEventPos(e);
-  const edgeW = IS_MOBILE ? W : PW;
-  if (dragState === DRAG_RIGHT) dragX = Math.max(0, Math.min(edgeW, W - pos.x));
-  else                          dragX = Math.max(0, Math.min(edgeW, pos.x));
-  draw();
-}
-
-function onDragEnd(e) {
-  if (dragState === DRAG_NONE || animating) return;
-  e.preventDefault();
-  flipCanvas.classList.remove('dragging');
-  dragState = DRAG_NONE;
-  if (IS_MOBILE && e.changedTouches) {
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(dx) < 10) { draw(); return; }
-    if (dx < 0 && spread < maxSpreads) { spread++; }
-    else if (dx > 0 && spread > 0)     { spread--; }
-    draw(); updateUI();
-    return;
-  }
-  finishDrag();
-}
-
 function bindEvents() {
-  flipCanvas.addEventListener('mousedown', onDragStart);
-  window.addEventListener('mousemove', onDragMove);
-  window.addEventListener('mouseup',   onDragEnd);
-  flipCanvas.addEventListener('touchstart', onTouchStart, { passive: false });
-  window.addEventListener('touchmove',  onTouchMove,  { passive: false });
-  window.addEventListener('touchend',   onDragEnd,    { passive: false });
-  if (!IS_MOBILE) {
-    zoneRight.addEventListener('click', () => quickFlip('right'));
-    zoneLeft.addEventListener('click',  () => quickFlip('left'));
-  }
-  prevBtn.addEventListener('click', () => quickFlip('left'));
-  nextBtn.addEventListener('click', () => quickFlip('right'));
+  // Tap right half → next, left half → prev
+  zoneRight.addEventListener('click', () => goTo(spread + 1));
+  zoneLeft.addEventListener('click',  () => goTo(spread - 1));
+
+  prevBtn.addEventListener('click', () => goTo(spread - 1));
+  nextBtn.addEventListener('click', () => goTo(spread + 1));
+
+  // Swipe on mobile
+  let swipeStartX = 0;
+  flipCanvas.addEventListener('touchstart', e => {
+    swipeStartX = e.touches[0].clientX;
+  }, { passive: true });
+  flipCanvas.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - swipeStartX;
+    if (Math.abs(dx) < 20) return; // too small, ignore
+    if (dx < 0) goTo(spread + 1);
+    else        goTo(spread - 1);
+  }, { passive: true });
+
+  // Keyboard
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(spread + 1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(spread - 1);
+  });
+
+  // Fullscreen
   fsBtn.addEventListener('click', () => {
     const el = document.documentElement;
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -577,10 +346,6 @@ function bindEvents() {
       (document.exitFullscreen || document.webkitExitFullscreen).call(document);
       fsBtn.textContent = '⤢';
     }
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') quickFlip('right');
-    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   quickFlip('left');
   });
 }
 
@@ -600,10 +365,7 @@ function buildThumbs() {
       thumb.appendChild(tc);
     }
     const si = s;
-    thumb.addEventListener('click', () => {
-      if (animating) return;
-      spread = si; draw(); updateUI();
-    });
+    thumb.addEventListener('click', () => goTo(si));
     thumbsEl.appendChild(thumb);
   }
 }
