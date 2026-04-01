@@ -7,20 +7,23 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    width: 100%; height: 100%;
+    width: 100%;
     background: #fff;
     font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
-    overflow: hidden;
-    touch-action: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
     user-select: none;
     -webkit-user-select: none;
   }
   #root {
-    width: 100vw; height: 100vh;
+    width: 100%;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    padding: 20px 0;
   }
   #loading-screen {
     display: flex;
@@ -225,7 +228,7 @@ async function init() {
     // The book shows two pages side by side.
     // Constrain by available viewport: max 92vw wide, max 72vh tall.
     const maxBookW = Math.min(760, window.innerWidth  * 0.92);
-    const maxBookH = window.innerHeight * 0.72;
+    const maxBookH = Math.min(480, window.innerHeight * 0.65);
 
     // Scale so one page fills half the book width OR the full book height
     const scaleForW = (maxBookW / 2) / pdfPageW;
