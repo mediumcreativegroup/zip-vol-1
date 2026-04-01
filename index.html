@@ -176,6 +176,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 const PDF_FILE = 'https://dl.dropboxusercontent.com/scl/fi/cq8sttlghzex1bk16qyti/zip-vol-1.pdf';
+const CORS_PROXY = 'https://corsproxy.io/?';
 
 // ── DOM refs ──
 const loadingScreen = document.getElementById('loading-screen');
@@ -217,11 +218,20 @@ let animStart  = 0;
 const ANIM_DURATION = 320; // ms
 
 // ── Load PDF ──
+async function fetchWithFallback(url) {
+  try {
+    const res = await fetch(url);
+    if (res.ok) return await res.arrayBuffer();
+  } catch (e) { /* try proxy */ }
+  loadingLabel.textContent = 'Connecting…';
+  const res = await fetch(CORS_PROXY + encodeURIComponent(url));
+  if (!res.ok) throw new Error(res.status);
+  return await res.arrayBuffer();
+}
+
 async function init() {
   try {
-    const res = await fetch(PDF_FILE);
-    if (!res.ok) throw new Error(res.status);
-    const buf = await res.arrayBuffer();
+    const buf = await fetchWithFallback(PDF_FILE);
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
     totalPages = pdf.numPages;
 
