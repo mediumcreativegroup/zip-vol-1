@@ -175,7 +175,7 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const PDF_FILE = 'https://dl.dropboxusercontent.com/scl/fi/cq8sttlghzex1bk16qyti/zip-vol-1.pdf?rlkey=els7nrqxzag2kyc52i1mstx2b&st=zilz8e9e&dl=1';
+const PDF_FILE = 'https://drive.google.com/uc?export=download&id=1Q2CXEXXBmTFApv5JboYMAgYTckuDUkYB';
 const CORS_PROXY = 'https://corsproxy.io/?';
 
 // ── DOM refs ──
@@ -255,7 +255,7 @@ async function init() {
     loadingLabel.style.display = 'none';
     progFill.parentElement.style.display = 'none';
     errorMsg.style.display = 'block';
-    errorMsg.innerHTML = `Could not load <code>zip-vol-1.pdf</code><br>Make sure it's in the same folder as <code>index.html</code><br><br><span style="opacity:0.5">${err.message}</span>`;
+    errorMsg.innerHTML = `Could not load the PDF.<br>Make sure the Google Drive file is set to <strong>Anyone with the link</strong> can view.<br><br><span style="opacity:0.5">${err.message}</span>`;
   }
 }
 
