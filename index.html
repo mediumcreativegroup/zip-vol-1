@@ -524,7 +524,9 @@ function onTouchMove(e) {
     const dy = Math.abs(e.touches[0].clientY - touchStartY);
     touchDir = dx > dy ? 'h' : 'v';
   }
-  if (touchDir === 'h') { e.preventDefault(); onDragMove(e); }
+  // On mobile just block scroll during horizontal swipe, no live drag drawing
+  if (IS_MOBILE && touchDir === 'h') { e.preventDefault(); return; }
+  if (!IS_MOBILE && touchDir === 'h') { e.preventDefault(); onDragMove(e); }
 }
 
 function onDragMove(e) {
@@ -541,16 +543,13 @@ function onDragEnd(e) {
   if (dragState === DRAG_NONE || animating) return;
   e.preventDefault();
   flipCanvas.classList.remove('dragging');
-  // On mobile, determine direction from swipe
+  dragState = DRAG_NONE;
   if (IS_MOBILE && e.changedTouches) {
     const dx = e.changedTouches[0].clientX - touchStartX;
-    if (Math.abs(dx) < 10) { dragState = DRAG_NONE; draw(); return; }
-    if (dx < 0 && spread < maxSpreads) { dragState = DRAG_RIGHT; pendingDir = 'right'; }
-    else if (dx > 0 && spread > 0)     { dragState = DRAG_LEFT;  pendingDir = 'left'; }
-    else { dragState = DRAG_NONE; draw(); return; }
-    flipProgress = 0; animFrom = 0; animTarget = 1;
-    animStart = performance.now(); animating = true;
-    requestAnimationFrame(animFrame);
+    if (Math.abs(dx) < 10) { draw(); return; }
+    if (dx < 0 && spread < maxSpreads) { spread++; }
+    else if (dx > 0 && spread > 0)     { spread--; }
+    draw(); updateUI();
     return;
   }
   finishDrag();
