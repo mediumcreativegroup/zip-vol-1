@@ -242,8 +242,8 @@ async function init() {
     H  = cssPageH;      // book height = one page height
     PW = cssPageW;
 
-    // Render at 2x for retina sharpness
-    const renderScale = displayScale * 2;
+    // Render at 4x for sharp text
+    const renderScale = displayScale * 4;
 
     for (let i = 1; i <= totalPages; i++) {
       loadingLabel.textContent = `${i} / ${totalPages}`;
